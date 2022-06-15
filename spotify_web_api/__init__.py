@@ -18,8 +18,9 @@ else:
 
 
 class SpotifyWebApiClient:
-    def __init__(self, session):
+    def __init__(self, session, debug=False):
         self.session = session
+        self.debug = debug
 
     def play(self, context_uri=None, uris=None, offset=None, position_ms=None):
         request_body = {}
@@ -41,6 +42,12 @@ class SpotifyWebApiClient:
         self.session.put(
             url='https://api.spotify.com/v1/me/player/pause',
         )
+
+    def player(self):
+        response = self.session.get(
+            url='https://api.spotify.com/v1/me/player',
+        )
+        return response
 
     def devices(self):
         response = self.session.get(
@@ -94,6 +101,7 @@ class Session:
             json = {}
 
         def put_request():
+            print("passing PUT to requests")
             return requests.put(
                 url=self._add_device_id(url),
                 headers=self._headers(),
@@ -113,6 +121,7 @@ class Session:
             error = Session._error_from_response(response)
 
             if error['message'] == 'The access token expired':
+                print("access token refreshing")
                 self._refresh_access_token()
                 response = request()  # Retry
 
