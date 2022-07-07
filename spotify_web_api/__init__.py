@@ -1,4 +1,5 @@
 import sys
+import gc
 
 
 if sys.implementation.name == 'micropython':
@@ -101,7 +102,6 @@ class Session:
             json = {}
 
         def put_request():
-            print("passing PUT to requests")
             return requests.put(
                 url=self._add_device_id(url),
                 headers=self._headers(),
@@ -126,9 +126,11 @@ class Session:
                 response = request()  # Retry
 
         self._check_status_code(response)
-
         if response.content:
             return response.json()
+        # TODO possibly improve memory use by reworking to support explicit .close()
+        # I don't think we ever reach here as all calls return content, but for good measure
+        response.close()
 
     @staticmethod
     def _check_status_code(response):
