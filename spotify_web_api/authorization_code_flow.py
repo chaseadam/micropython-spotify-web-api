@@ -1,5 +1,5 @@
 import sys
-
+import json
 from . import (
     parse_qs,
     save_credentials,
@@ -80,7 +80,7 @@ def setup_wizard(default_client_id='', default_client_secret='', default_device_
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind(addr)
     s.listen(5)
-    print("Listening, connect your browser to http://{myip}:8080/".format(myip=myip()))
+    print("Listening, connect your browser to http://{hostname}:8080/".format(hostname=myip()))
 
     redirect_uri = None
     client_id = None
@@ -105,6 +105,8 @@ def setup_wizard(default_client_id='', default_client_secret='', default_device_
             if h.startswith("Host: "):
                 host = h[6:-2]
                 redirect_uri = 'http://{host}/auth-response/'.format(host=host)
+                # use universal oauth hostname
+                redirect_uri = 'http://{host}/auth-response/'.format(host='esp32-oauth.local:8080')
             if h.startswith("Content-Length: "):
                 content_length = int(h[16:-2])
             if h == "" or h == "\r\n":
@@ -138,8 +140,21 @@ def setup_wizard(default_client_id='', default_client_secret='', default_device_
             )
             url = "{path}?{query}".format(path=authorization_endpoint, query=urlencode(params))
             write_response(AUTH_REDIRECT_TEMPLATE.format(url=url))
+            # trigger mDNS change and reset to change mDNS value
+            file = open('oauth-staged','wb')
+            json.dump((params, client_secret), file)
+            file.close()
+            import machine; machine.reset()
 
         elif req.startswith("GET /auth-response"):
+            # load values from before reset due to mDNS change
+            file = open('oauth-staged','rb')
+            params, client_secret = json.load(file)
+            client_id = params['client_id']
+            redirect_uri = params['redirect_uri']
+            file.close()
+            import os; os.remove('oauth-staged')
+
             authorization_code = parse_qs(req[4:-11].split('?')[1])['code'][0]
             credentials = refresh_token(authorization_code, redirect_uri, client_id, client_secret)
             spotify_client = SpotifyWebApiClient(Session(credentials))
@@ -165,6 +180,8 @@ def setup_wizard(default_client_id='', default_client_secret='', default_device_
             write_response(NOT_FOUND)
 
     save_credentials(credentials)
+    # reset to set default mDNS
+    import machine; machine.reset()
     return spotify_client
 
 
@@ -197,8 +214,11 @@ def myip():
     if sys.implementation.name == 'micropython':
         try:
             import network
-
-            return network.WLAN(network.STA_IF).ifconfig()[0]
+            try:
+                host = network.WLAN(network.STA_IF).config('hostname') + ".local"
+            except ValueError:
+                host = network.WLAN(network.STA_IF).config('dhcp_hostname') + ".local"
+            return host
         except ImportError:
             return "<my host>"
     else:
