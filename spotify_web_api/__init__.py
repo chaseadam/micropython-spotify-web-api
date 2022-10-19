@@ -39,6 +39,12 @@ class SpotifyWebApiClient:
             json=request_body,
         )
 
+    def resume(self):
+        self.play()
+    def next(self):
+        self.session.post(
+            url='https://api.spotify.com/v1/me/player/next',
+        )
     def pause(self):
         self.session.put(
             url='https://api.spotify.com/v1/me/player/pause',
@@ -111,6 +117,21 @@ class Session:
 
         return self._execute_request(put_request)
 
+    def post(self, url, json=None, **kwargs):
+        # Workaround for urequests not sending "Content-Length" on empty data
+        if json is None:
+            json = {}
+
+        def post_request():
+            return requests.post(
+                url=self._add_device_id(url),
+                headers=self._headers(),
+                json=json,
+                **kwargs,
+            )
+
+        return self._execute_request(post_request)
+
     def _headers(self):
         return {'Authorization': 'Bearer {access_token}'.format(**self.credentials)}
 
@@ -130,6 +151,7 @@ class Session:
             return response.json()
         # TODO possibly improve memory use by reworking to support explicit .close()
         # I don't think we ever reach here as all calls return content, but for good measure
+        # possibly add garbage collection due to TLS calls?
         response.close()
 
     @staticmethod
