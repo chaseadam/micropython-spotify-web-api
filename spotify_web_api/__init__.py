@@ -65,6 +65,7 @@ class SpotifyWebApiClient:
 
 
 class Device:
+    # TODO handle "new" arguments gracefully
     def __init__(
         self,
         id,
@@ -74,6 +75,7 @@ class Device:
         name,
         type,
         volume_percent,
+        supports_volume
     ):
         self.id = id
         self.is_active = is_active
@@ -82,6 +84,7 @@ class Device:
         self.name = name
         self.type = type
         self.volume_percent = volume_percent
+        self.supports_volume = supports_volume
 
     def __repr__(self):
         return 'Device(name={}, type={}, id={})'.format(self.name, self.type, self.id)
