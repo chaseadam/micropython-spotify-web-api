@@ -69,7 +69,7 @@ Setup completed successfully!
 """
 
 
-def setup_wizard(default_client_id='', default_client_secret='', default_device_id=''):
+def setup_wizard(default_client_id='', default_client_secret='', default_device_id='', display=None):
     micropython_optimize = sys.implementation.name == 'micropython'
     s = socket.socket()
 
@@ -81,6 +81,13 @@ def setup_wizard(default_client_id='', default_client_secret='', default_device_
     s.bind(addr)
     s.listen(5)
     print("Listening, connect your browser to http://{hostname}:8080/".format(hostname=myip()))
+    if display:
+        # max 32 characters for URI split between 2 lines
+        display.fill(0)
+        display.text("Spotify Config", 0, 0)
+        display.text("http://{hostname}:8080/".format(hostname=myip())[0:16], 0, 10)
+        display.text("http://{hostname}:8080/".format(hostname=myip())[17:], 0, 20)
+        display.show()
 
     redirect_uri = None
     client_id = None

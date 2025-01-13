@@ -225,12 +225,12 @@ def load_credentials():
     return credentials
 
 
-def spotify_client():
+def spotify_client(display=None):
     credentials = load_credentials()
     if not credentials:
         from . import authorization_code_flow
 
-        return authorization_code_flow.setup_wizard()
+        return authorization_code_flow.setup_wizard(display=display)
     session = Session(credentials)
     return SpotifyWebApiClient(session)
 
