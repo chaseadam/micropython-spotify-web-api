@@ -160,7 +160,6 @@ def setup_wizard(default_client_id='', default_client_secret='', default_device_
             client_id = params['client_id']
             redirect_uri = params['redirect_uri']
             file.close()
-            import os; os.remove('oauth-staged')
 
             authorization_code = parse_qs(req[4:-11].split('?')[1])['code'][0]
             credentials = refresh_token(authorization_code, redirect_uri, client_id, client_secret)
@@ -175,6 +174,7 @@ def setup_wizard(default_client_id='', default_client_secret='', default_device_
             write_response(SELECT_DEVICE_TEMPLATE.format(device_list=''.join(device_list_html)))
 
         elif req.startswith("POST /select-device"):
+            import os; os.remove('oauth-staged')
             response = client_stream.read(content_length).decode()
             device_id = parse_qs(response).get('device_id')
             if device_id:
