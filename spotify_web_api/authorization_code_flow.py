@@ -137,6 +137,7 @@ def setup_wizard(default_client_id='', default_client_secret='', default_device_
         elif req.startswith("POST /auth-request"):
             authorization_endpoint = 'https://accounts.spotify.com/authorize'
             form_values = parse_qs(client_stream.read(content_length).decode())
+            # TODO fix crash if empty
             client_id = form_values['client_id'][0]
             client_secret = form_values['client_secret'][0]
             params = dict(
@@ -162,7 +163,9 @@ def setup_wizard(default_client_id='', default_client_secret='', default_device_
             file.close()
 
             authorization_code = parse_qs(req[4:-11].split('?')[1])['code'][0]
-            credentials = refresh_token(authorization_code, redirect_uri, client_id, client_secret)
+            # TODO: the authorization code can only be used once, if you powercycle, gets lost
+            if not credentials:
+                credentials = refresh_token(authorization_code, redirect_uri, client_id, client_secret)
             spotify_client = SpotifyWebApiClient(Session(credentials))
             template = """<input type="radio" name="device_id" value="{id}" {checked}> {name}<br>"""
             device_list_html = [
@@ -208,6 +211,7 @@ def refresh_token(authorization_code, redirect_uri, client_id, client_secret):
         data=urlencode(params),
     )
     tokens = response.json()
+    # TODO handle errors in response such as {'error_description': 'Authorization code expired', 'error': 'invalid_grant'} after trying to use oauth code twice (or timeout)
     return dict(
         access_token=tokens['access_token'],
         refresh_token=tokens['refresh_token'],
