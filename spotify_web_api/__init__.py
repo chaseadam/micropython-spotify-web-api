@@ -152,12 +152,16 @@ class Session:
 
         self._check_status_code(response)
         content_json = False
+        #print("printing response: {}".format(response.content))
+        # WARNING: spotify changes how the API responds in unpredictable ways, we should be more defensive here
+        # 01/25/2025 next api returns binary garbage with 200, but documentation states empty response with 204
         if response.content:
-            content_json = response.json()
-        # TODO possibly improve memory use by reworking to support explicit .close()
-        # I don't think we ever reach here as all calls return content, but for good measure
-        # possibly add garbage collection due to TLS calls?
-        print('[_execute_request]closing connection')
+            try:
+                content_json = response.json()
+            except ValueError as e:
+                print('Spotify API response not JSON')
+                content_json = '{}'
+        print('[spotify _execute_request] closing connection')
         response.close()
         if content_json:
             return content_json
