@@ -146,16 +146,21 @@ class Session:
 
             if error['message'] == 'The access token expired':
                 print("access token refreshing")
+                response.close()
                 self._refresh_access_token()
                 response = request()  # Retry
 
         self._check_status_code(response)
+        content_json = False
         if response.content:
-            return response.json()
+            content_json = response.json()
         # TODO possibly improve memory use by reworking to support explicit .close()
         # I don't think we ever reach here as all calls return content, but for good measure
         # possibly add garbage collection due to TLS calls?
+        print('[_execute_request]closing connection')
         response.close()
+        if content_json:
+            return content_json
 
     @staticmethod
     def _check_status_code(response):
@@ -193,6 +198,7 @@ class Session:
         self._check_status_code(response)
 
         tokens = response.json()
+        response.close()
         self.credentials['access_token'] = tokens['access_token']
         if 'refresh_token' in tokens:
             self.credentials['refresh_token'] = tokens['refresh_token']
@@ -207,6 +213,7 @@ class SpotifyWebApiError(Exception):
 
 
 def save_credentials(credentials):
+    #TODO if we are asserting in load_credentials, we should probably assert here too
     with open('credentials.json', 'w') as credentials_file:
         credentials_file.write(json.dumps(credentials))
 
