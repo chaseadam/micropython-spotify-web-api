@@ -1,4 +1,5 @@
 import sys
+import os
 import json
 from . import (
     parse_qs,
@@ -147,37 +148,61 @@ def setup_wizard(default_client_id='', default_client_secret='', default_device_
                 scope='user-read-playback-state user-modify-playback-state',
             )
             url = "{path}?{query}".format(path=authorization_endpoint, query=urlencode(params))
-            write_response(AUTH_REDIRECT_TEMPLATE.format(url=url))
             # trigger mDNS change and reset to change mDNS value
             file = open('oauth-staged','wb')
             json.dump((params, client_secret), file)
             file.close()
-            import machine; machine.reset()
+            write_response(AUTH_REDIRECT_TEMPLATE.format(url=url))
+            # skip reset if our hostname is already the oauth mDNS
+            if myip() != 'esp32-oauth.local':
+                import machine; machine.reset()
 
         elif req.startswith("GET /auth-response"):
-            # load values from before reset due to mDNS change
-            file = open('oauth-staged','rb')
-            params, client_secret = json.load(file)
-            client_id = params['client_id']
-            redirect_uri = params['redirect_uri']
-            file.close()
-
-            authorization_code = parse_qs(req[4:-11].split('?')[1])['code'][0]
-            # TODO: the authorization code can only be used once, if you powercycle, gets lost
+            # if we have credentials already and are refreshing the page
             if not credentials:
-                credentials = refresh_token(authorization_code, redirect_uri, client_id, client_secret)
+                # if file is not present, redirect to beginning
+                try:
+                    # load values from before reset due to mDNS change
+                    file = open('oauth-staged','rb')
+                    params, client_secret = json.load(file)
+                    client_id = params['client_id']
+                    redirect_uri = params['redirect_uri']
+                    file.close()
+                    authorization_code = parse_qs(req[4:-11].split('?')[1])['code'][0]
+                    if not credentials:
+                        print('requesting credentials')
+                        credentials = refresh_token(authorization_code, redirect_uri, client_id, client_secret)
+                        # TODO find a way to stash these immediately, before device selected so we handle powercycle
+                        # oauth tokens can only be used to grab tokens once, so reset oauth flow
+                        os.remove('oauth-staged')
+                        # This will cause oauth process to restart on a powercycle or reset
+                except OSError:
+                    #no oauth file and no credentials, redirect to start of oauth flow
+                    write_response(AUTH_REDIRECT_TEMPLATE.format(url='/'))
+                    continue
+            else:
+                print('re-using credentials')
             spotify_client = SpotifyWebApiClient(Session(credentials))
             template = """<input type="radio" name="device_id" value="{id}" {checked}> {name}<br>"""
             device_list_html = [
                 template.format(id='', checked='checked' if not default_device_id else '', name='All devices')
             ]
-            for device in spotify_client.devices():
-                checked = 'checked' if device.id == default_device_id else ''
-                device_list_html.append(template.format(id=device.id, checked=checked, name=device.name))
-            write_response(SELECT_DEVICE_TEMPLATE.format(device_list=''.join(device_list_html)))
+            print('getting devices')
+            for i in range(0,20):
+                try:
+                    for device in spotify_client.devices():
+                        checked = 'checked' if device.id == default_device_id else ''
+                        device_list_html.append(template.format(id=device.id, checked=checked, name=device.name))
+                    write_response(SELECT_DEVICE_TEMPLATE.format(device_list=''.join(device_list_html)))
+                    break
+                except OSError as e:
+                    print("retrying devices list after {}".format(e))
+                    continue
+            else:
+                # TODO write_response with this message as well
+                print("failed to get devices")
 
         elif req.startswith("POST /select-device"):
-            import os; os.remove('oauth-staged')
             response = client_stream.read(content_length).decode()
             device_id = parse_qs(response).get('device_id')
             if device_id:
@@ -189,12 +214,13 @@ def setup_wizard(default_client_id='', default_client_secret='', default_device_
         else:
             write_response(NOT_FOUND)
 
+    # don't save until deviceid is set up
     save_credentials(credentials)
     # reset to set default mDNS
     import machine; machine.reset()
     return spotify_client
 
-
+# TODO this is defined here and in __init__.py?
 def refresh_token(authorization_code, redirect_uri, client_id, client_secret):
     params = dict(
         grant_type="authorization_code",
@@ -205,21 +231,27 @@ def refresh_token(authorization_code, redirect_uri, client_id, client_secret):
     )
 
     access_token_endpoint = "https://accounts.spotify.com/api/token"
-    response = requests.post(
-        access_token_endpoint,
-        headers={'Content-Type': 'application/x-www-form-urlencoded'},
-        data=urlencode(params),
-    )
-    tokens = response.json()
-    # TODO handle errors in response such as {'error_description': 'Authorization code expired', 'error': 'invalid_grant'} after trying to use oauth code twice (or timeout)
-    return dict(
-        access_token=tokens['access_token'],
-        refresh_token=tokens['refresh_token'],
-        client_id=client_id,
-        client_secret=client_secret,
-        device_id=None,
-    )
-
+    try:
+        response = requests.post(
+            access_token_endpoint,
+            headers={'Content-Type': 'application/x-www-form-urlencoded'},
+            data=urlencode(params),
+        )
+        tokens = response.json()
+        print('closing token api call')
+        response.close()
+        # TODO handle errors in response such as {'error_description': 'Authorization code expired', 'error': 'invalid_grant'} after trying to use oauth code twice (or timeout)
+        return dict(
+            access_token=tokens['access_token'],
+            refresh_token=tokens['refresh_token'],
+            client_id=client_id,
+            client_secret=client_secret,
+            device_id=None,
+        )
+    # Sometimes SSL errors, try soft reboot and try again, the oauth code may still be good, maybe not?
+    except OSError as e:
+        print("resetting in auth token refresh to address {}".format(e))
+        import machine; machine.reset()
 
 def myip():
     if sys.implementation.name == 'micropython':
