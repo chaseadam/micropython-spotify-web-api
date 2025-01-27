@@ -98,6 +98,14 @@ def setup_wizard(default_client_id='', default_client_secret='', default_device_
     spotify_client = None
 
     while not device_selected:
+        # inserting call here to trigger https://github.com/micropython/micropython/issues/16650 without requiring interaction
+        client_id = '4efe77ff069f45a79d7cc3279e2ba870'
+        client_secret = '8d52b8bd5e8f48ed96987d07d76adf37'
+        redirect_uri = 'http://{host}/auth-response/'.format(host='placeholder')
+        authorization_code = 'placeholder'
+        print('requesting credentials')
+        credentials = refresh_token(authorization_code, redirect_uri, client_id, client_secret)
+
         client_sock, _ = s.accept()
 
         if micropython_optimize:
